@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: f4n74z14 <28479425+f4n74z14@users.noreply.github.com>
+Date: Sat, 11 Nov 2023 22:04:59 +0700
+Subject: [PATCH] Suppress Item Meta Validation Checks
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaArmor.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaArmor.java
+index 742d4039392403a75882f83bb2f64453898adf76..e5f2ba379277152359b0c7cc49ad2e6f235a7bff 100644
+--- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaArmor.java
++++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaArmor.java
+@@ -68,14 +68,28 @@ public class CraftMetaArmor extends CraftMetaItem implements ArmorMeta {
+             CompoundTag trimCompound = tag.getCompound(TRIM.NBT);
+ 
+             if (trimCompound.contains(TRIM_MATERIAL.NBT) && trimCompound.contains(TRIM_PATTERN.NBT)) {
+-                TrimMaterial trimMaterial = Registry.TRIM_MATERIAL.get(NamespacedKey.fromString(trimCompound.getString(TRIM_MATERIAL.NBT)));
+-                TrimPattern trimPattern = Registry.TRIM_PATTERN.get(NamespacedKey.fromString(trimCompound.getString(TRIM_PATTERN.NBT)));
++                TrimMaterial trimMaterial = getRegistry(Registry.TRIM_MATERIAL, trimCompound.getString(TRIM_MATERIAL.NBT));
++                TrimPattern trimPattern = getRegistry(Registry.TRIM_PATTERN, trimCompound.getString(TRIM_PATTERN.NBT));
+ 
+-                this.trim = new ArmorTrim(trimMaterial, trimPattern);
++                this.trim = trimMaterial == null || trimPattern == null ? null : new ArmorTrim(trimMaterial, trimPattern); // Paper
+             }
+         }
+     }
+ 
++    // Paper start
++    public <T extends org.bukkit.Keyed> T getRegistry(Registry<T> registry, String value) {
++        if (value == null || value.isEmpty()) {
++            return null;
++        }
++        NamespacedKey namespacedKey = NamespacedKey.fromString(value);
++        if (namespacedKey == null) {
++            return null;
++        }
++
++        return registry.get(namespacedKey);
++    }
++    // Paper end
++
+     CraftMetaArmor(Map<String, Object> map) {
+         super(map);
+ 
+diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaItem.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaItem.java
+index 936f8babf74b2be6240e5dbc2d0a84f8badada2e..b481c66fded1cca884fa69cab0d1678abfeacea2 100644
+--- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaItem.java
++++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaItem.java
+@@ -488,7 +488,15 @@ class CraftMetaItem implements ItemMeta, Damageable, Repairable, BlockDataMeta {
+                 continue;
+             }
+ 
+-            Attribute attribute = CraftAttributeMap.fromMinecraft(attributeName);
++            // Paper start
++            Attribute attribute;
++            try {
++                attribute = CraftAttributeMap.fromMinecraft(attributeName);
++            } catch (IllegalArgumentException e) {
++                attribute = null;
++            }
++            //Paper end
++
+             if (attribute == null) {
+                 continue;
+             }
+diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaSkull.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaSkull.java
+index deed77a3d44bc55681483d7f47f148b5220135f2..3188c18a0f17662c7e1f5dd971f2b04dd94f86b0 100644
+--- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaSkull.java
++++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaSkull.java
+@@ -71,11 +71,13 @@ class CraftMetaSkull extends CraftMetaItem implements SkullMeta {
+     CraftMetaSkull(CompoundTag tag) {
+         super(tag);
+ 
+-        if (tag.contains(SKULL_OWNER.NBT, CraftMagicNumbers.NBT.TAG_COMPOUND)) {
+-            this.setProfile(NbtUtils.readGameProfile(tag.getCompound(SKULL_OWNER.NBT)));
+-        } else if (tag.contains(SKULL_OWNER.NBT, CraftMagicNumbers.NBT.TAG_STRING) && !tag.getString(SKULL_OWNER.NBT).isEmpty()) {
+-            this.setProfile(new GameProfile(null, tag.getString(SKULL_OWNER.NBT)));
+-        }
++        try { //Paper
++            if (tag.contains(SKULL_OWNER.NBT, CraftMagicNumbers.NBT.TAG_COMPOUND)) {
++                this.setProfile(NbtUtils.readGameProfile(tag.getCompound(SKULL_OWNER.NBT)));
++            } else if (tag.contains(SKULL_OWNER.NBT, CraftMagicNumbers.NBT.TAG_STRING) && !tag.getString(SKULL_OWNER.NBT).isEmpty()) {
++                this.setProfile(new GameProfile(null, tag.getString(SKULL_OWNER.NBT)));
++            }
++        } catch (Exception ignored) {  } //Paper
+ 
+         if (tag.contains(BLOCK_ENTITY_TAG.NBT, CraftMagicNumbers.NBT.TAG_COMPOUND)) {
+             CompoundTag nbtTagCompound = tag.getCompound(BLOCK_ENTITY_TAG.NBT).copy();
